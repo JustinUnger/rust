@@ -27,11 +27,9 @@ fn main() {
                 let mut msg_bytes = Vec::new();
                 let bytes_read: io::Result<usize> = msg.read_to_end(&mut msg_bytes);
                 let fn1 = fname.clone() + ".share1";
-                let share1_file 
-                       = File::create(&Path::new(&fn1));
+                let share1_file = File::create(&fn1);
                 let fn2 = fname.clone() + ".share2";
-                let share2_file 
-                       = File::create(&Path::new(&fn2));
+                let share2_file = File::create(&fn2);
                 
                 match (share1_file, share2_file) {
                     (Ok(share1), Ok(share2)) => { 
