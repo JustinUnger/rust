@@ -3,7 +3,6 @@
 extern crate rand;
 
 use std::env;
-use std::path::Path;
 use std::io;
 use std::fs::File;
 use std::io::Read;
@@ -13,19 +12,17 @@ use rand::Rng;
 
 fn main() {
     let mut args: env::Args = env::args();
-    let arg_count = env::args().count();
-    if arg_count != 2 {
+    if args.len() != 2 {
         println!("Usage: {} <inputfile>", args.nth(0).unwrap()); 
     } else {
         let fname = args.nth(1).unwrap();
-        let pn = fname.clone();
-        let path = Path::new(&pn);
-        let msg_file = File::open(&path);
+        let msg_file = File::open(&fname);
 
         match msg_file {
             Ok(mut msg) => {
                 let mut msg_bytes = Vec::new();
                 let bytes_read: io::Result<usize> = msg.read_to_end(&mut msg_bytes);
+                let msg_bytes = msg_bytes;
                 let fn1 = fname.clone() + ".share1";
                 let share1_file = File::create(&fn1);
                 let fn2 = fname.clone() + ".share2";
