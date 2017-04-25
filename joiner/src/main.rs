@@ -11,7 +11,8 @@ fn main() {
         return;
     }
 
-    let args = args.collect::<Vec<_>>();
+  //let args = args.collect::<Vec<_>>();
+    let args: Vec<String> = args.collect();
 
     let fn1 = &args[1];
     let fn2 = &args[2];
