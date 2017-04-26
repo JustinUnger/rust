@@ -15,6 +15,7 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::str;
 use std::thread;
+use std::path::Path;
 use std::fs::File;
 
 use std::error::Error;
@@ -87,6 +88,14 @@ fn process_request(s: &str) -> String {
 }
 
 fn respond_file(req_path: &str) -> String {
+    let p = Path::new(req_path);
+    match p.extension() {
+        None => return response_permission_denied(),
+        Some(ext) => if ext != "html" {
+            return response_permission_denied();
+        }
+    }
+    
     // try to open the file. if it doesn't exist, respond with 404. 
     if let Ok(mut cwd) = env::current_dir() {
         cwd.push(&req_path[1..]);
@@ -102,6 +111,10 @@ fn respond_file(req_path: &str) -> String {
     } else {
         response_not_found("")
     }
+}
+
+fn response_permission_denied() -> String {
+    http_response("403 Forbidden","Forbidden")
 }
 
 fn response_server_error(content: &str) -> String {
