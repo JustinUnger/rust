@@ -46,11 +46,17 @@ impl <'a>Shell<'a> {
         }
     }
 
-    fn process_cmdline(&mut self, cmd_line: &str) -> Result<(),io::Error> {
+    fn process_cmdline(&mut self, mut cmd_line: &str) -> Result<(),io::Error> {
         let program = cmd_line.splitn(2, ' ').nth(0).expect("no program");
         let cmd_line_chars: Vec<char> = cmd_line.chars().collect();
         let len = cmd_line_chars.len();
         let background = if len == 0 { false } else { cmd_line_chars[len-1] == '&'};
+
+        if background {
+            cmd_line = &cmd_line[0..len-1];
+        }
+
+        let cmd_line = cmd_line;
 
         if program != "" { 
             self.cmd_history.push(String::from(cmd_line));
@@ -100,7 +106,10 @@ impl <'a>Shell<'a> {
             } else {
                 let mut c = Command::new(program);
                 let c = c.args(argv);
-                let child = c.spawn();
+                match c.spawn() {
+                    Ok(child) => io::stdout().write(format!("[PID {}]\n",child.id()).as_bytes()),
+                    Err(e) => Err(e)
+                };
                 Ok(())
             }
         } else {
