@@ -17,6 +17,8 @@ use std::io::{self, Write};
 use std::process::Command;
 use std::error::Error;
 
+use std::thread;
+
 struct Shell<'a> {
     cmd_prompt: &'a str,
     cmd_history: Vec<String>
@@ -56,10 +58,10 @@ impl <'a>Shell<'a> {
             cmd_line = &cmd_line[0..len-1];
         }
 
-        let cmd_line = cmd_line;
+        let cmd_line = String::from(cmd_line);
 
         if program != "" { 
-            self.cmd_history.push(String::from(cmd_line));
+            self.cmd_history.push(cmd_line.clone());
         }
 
         match program {
@@ -77,45 +79,49 @@ impl <'a>Shell<'a> {
         }
     }
 
-    fn run_cd(&self, cmd_line: &str) -> Result<(),io::Error> {
+    fn run_cd(&self, cmd_line: String) -> Result<(),io::Error> {
         let argv: Vec<&str> = cmd_line.split_whitespace().collect();
         env::set_current_dir(&argv[1])?;
         Ok(())
     }
 
-    fn run_cmdline(&self, cmd_line: &str, background: bool) -> Result<(),io::Error> {
-        let argv: Vec<&str> = cmd_line.split(' ').filter_map(|x| {
-            if x == "" {
-                None
-            } else {
-                Some(x)
-            }
-        }).collect();
-
-        match argv.first() {
-            Some(&program) => self.run_cmd(program, &argv[1..], background),
-            None => Ok(())
-        }
+    fn run_cmdline(&self, cmd_line: String, background: bool) -> Result<(),io::Error> {
+            self.run_cmd(cmd_line, background)
     }
 
-    fn run_cmd(&self, program: &str, argv: &[&str], background: bool) -> Result<(),io::Error> {
+    fn run_cmd(&self, cmd_line: String, background: bool) -> Result<(),io::Error> {
+        let argv: Vec<_> = cmd_line.split_whitespace().collect();
+        let program = argv[0];
         if self.cmd_exists(program) {
             if !background {
-                io::stdout().write(&Command::new(program).args(argv).output().unwrap().stdout)?;
+                io::stdout().write(&Command::new(argv[0]).args(&argv[1..]).output().unwrap().stdout)?;
                 Ok(())
             } else {
-                let mut c = Command::new(program);
-                let c = c.args(argv);
-                match c.spawn() {
-                    Ok(child) => io::stdout().write(format!("[PID {}]\n",child.id()).as_bytes()),
-                    Err(e) => Err(e)
-                };
+                self.run_background(cmd_line.clone());
                 Ok(())
             }
         } else {
             println!("{}: command not found", program);
             Ok(())
         }
+    }
+
+    fn run_background(&self, cmd_line: String) {
+		// child: JoinHandle<T> 
+    
+        let _child = thread::spawn(move || {
+            let argv: Vec<_> = cmd_line.split_whitespace().collect();
+            let p = argv[0];
+            let mut c = Command::new(p);
+            c.args(&argv[1..]);
+            if let Ok(mut child) = c.spawn() {
+                println!("[PID {} started]", child.id());
+                let _rc = child.wait();
+                println!("[PID {} ended]", child.id());
+            } else {
+                println!("Couldn't start {}", p);
+            }
+		});
     }
 
     fn cmd_exists(&self, cmd_path: &str) -> bool {
