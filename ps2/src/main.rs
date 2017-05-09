@@ -16,6 +16,7 @@ use std::env;
 use std::io::{self, Write};
 use std::process::Command;
 use std::error::Error;
+use std::fs::File;
 
 use std::thread;
 
@@ -86,47 +87,83 @@ impl <'a>Shell<'a> {
     }
 
     fn run_cmdline(&self, cmd_line: String, background: bool) -> Result<(),io::Error> {
-            self.run_cmd(cmd_line, background)
-    }
-
-    fn run_cmd(&self, cmd_line: String, background: bool) -> Result<(),io::Error> {
         let argv: Vec<_> = cmd_line.split_whitespace().collect();
         let program = argv[0];
         if self.cmd_exists(program) {
-            if !background {
-                io::stdout().write(&Command::new(argv[0]).args(&argv[1..]).output().unwrap().stdout)?;
-                Ok(())
-            } else {
-                self.run_background(cmd_line.clone());
-                Ok(())
-            }
+            self.run_cmd(cmd_line.clone(),background);
+            Ok(())
         } else {
             println!("{}: command not found", program);
             Ok(())
         }
     }
 
-    fn run_background(&self, cmd_line: String) {
+    fn run_cmd(&self, cmd_line: String, background: bool) {
 		// child: JoinHandle<T> 
-    
-        let _child = thread::spawn(move || {
-            let argv: Vec<_> = cmd_line.split_whitespace().collect();
+
+        let child = thread::spawn(move || {
+            let cmd = foo(&cmd_line);
+            let argv: Vec<_> = cmd.cmd.split_whitespace().collect();
             let p = argv[0];
             let mut c = Command::new(p);
             c.args(&argv[1..]);
+
+            if let Some(fname) = cmd.outfile {
+                let mut f = File::open(fname);
+                if let Err(e) = f {
+                    println!("Couldn't open {}, error {}", fname, e);
+                    return;
+                } 
+            }
             if let Ok(mut child) = c.spawn() {
-                println!("[PID {} started]", child.id());
+                if background { 
+                    println!("[PID {} started]", child.id());
+                }
                 let _rc = child.wait();
-                println!("[PID {} ended]", child.id());
+                if background {
+                    println!("[PID {} ended]", child.id());
+                }
             } else {
                 println!("Couldn't start {}", p);
             }
 		});
+        if !background {
+            child.join().unwrap();
+        }
     }
 
     fn cmd_exists(&self, cmd_path: &str) -> bool {
         Command::new("which").arg(cmd_path).status().unwrap().success()
     }
+}
+
+struct Cmd<'a> {
+    cmd: &'a str,
+    outfile: Option<&'a str>,
+    infile:  Option<&'a str>,
+}
+
+fn foo(s: &str) -> Cmd {
+   let idx_in = s.find('<');
+   let idx_out = s.find('>');
+   
+   let c = match (idx_in,idx_out) {
+        (None,None)         => Cmd { cmd: s, outfile: None, infile: None},
+        (Some(ii), None)    => Cmd { cmd: &s[0..ii], outfile: None, infile: Some(&s[ii+1..])},
+        (None,Some(io))     => Cmd { cmd: &s[0..io], outfile: Some(&s[io+1..]), infile: None},
+        (Some(ii),Some(io)) => 
+            if ii < io {
+                Cmd { cmd: &s[0..ii].trim(), infile: Some(&s[ii+1..io]), outfile: Some(&s[io+1..]) }
+            } else {
+                Cmd { cmd: &s[0..io], outfile: Some(&s[io+1..ii]), infile: Some(&s[ii+1..]) }
+            }
+   };
+   
+   match c {
+       Cmd { cmd: cc, infile: ii, outfile: oo } => Cmd { cmd: cc.trim(), infile: ii.map(|s| s.trim()), outfile: oo.map(|s| s.trim()) }
+   }
+   
+   
 }
 
 fn get_cmdline_from_args() -> Option<String> {
