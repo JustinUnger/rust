@@ -13,8 +13,8 @@ extern crate getopts;
 
 use getopts::Options;
 use std::env;
-use std::io::{self, Write};
-use std::process::Command;
+use std::io::{self, Write, Read};
+use std::process::{Command, Stdio};
 use std::error::Error;
 use std::fs::File;
 
@@ -102,26 +102,36 @@ impl <'a>Shell<'a> {
 		// child: JoinHandle<T> 
 
         let child = thread::spawn(move || {
-            let cmd = foo(&cmd_line);
+            let cmd = Cmd::new(&cmd_line);
             let argv: Vec<_> = cmd.cmd.split_whitespace().collect();
             let p = argv[0];
             let mut c = Command::new(p);
             c.args(&argv[1..]);
 
-            if let Some(fname) = cmd.outfile {
-                let mut f = File::open(fname);
-                if let Err(e) = f {
-                    println!("Couldn't open {}, error {}", fname, e);
-                    return;
-                } 
-            }
+            let outfh = match cmd.outfile {
+                Some(fname) => {
+                    let f = File::create(fname);
+                    if let Err(e) = f {
+                        println!("Couldn't create {}, error {}", fname, e);
+                        return;
+                    } 
+                    c.stdout(Stdio::piped());
+                    Some(f.unwrap())
+                },
+                None => None
+            };
+
             if let Ok(mut child) = c.spawn() {
+                let pid = child.id();
                 if background { 
-                    println!("[PID {} started]", child.id());
+                    println!("[PID {} started]", pid);
                 }
                 let _rc = child.wait();
+                let mut buf = Vec::new();
+                child.stdout.map(|mut p| p.read_to_end(&mut buf));
+                outfh.map(|mut f| f.write(&buf));
                 if background {
-                    println!("[PID {} ended]", child.id());
+                    println!("[PID {} ended]", pid);
                 }
             } else {
                 println!("Couldn't start {}", p);
@@ -143,11 +153,12 @@ struct Cmd<'a> {
     infile:  Option<&'a str>,
 }
 
-fn foo(s: &str) -> Cmd {
-   let idx_in = s.find('<');
-   let idx_out = s.find('>');
-   
-   let c = match (idx_in,idx_out) {
+impl<'a> Cmd<'a> {
+    fn new(s: &str) -> Cmd {
+        let idx_in = s.find('<');
+        let idx_out = s.find('>');
+
+        let c = match (idx_in,idx_out) {
         (None,None)         => Cmd { cmd: s, outfile: None, infile: None},
         (Some(ii), None)    => Cmd { cmd: &s[0..ii], outfile: None, infile: Some(&s[ii+1..])},
         (None,Some(io))     => Cmd { cmd: &s[0..io], outfile: Some(&s[io+1..]), infile: None},
@@ -157,13 +168,12 @@ fn foo(s: &str) -> Cmd {
             } else {
                 Cmd { cmd: &s[0..io], outfile: Some(&s[io+1..ii]), infile: Some(&s[ii+1..]) }
             }
-   };
-   
-   match c {
-       Cmd { cmd: cc, infile: ii, outfile: oo } => Cmd { cmd: cc.trim(), infile: ii.map(|s| s.trim()), outfile: oo.map(|s| s.trim()) }
-   }
-   
-   
+        };
+
+        match c {
+            Cmd { cmd: cc, infile: ii, outfile: oo } => Cmd { cmd: cc.trim(), infile: ii.map(|s| s.trim()), outfile: oo.map(|s| s.trim()) }
+        }
+    }
 }
 
 fn get_cmdline_from_args() -> Option<String> {
